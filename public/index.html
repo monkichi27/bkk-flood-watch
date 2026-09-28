@@ -4,6 +4,12 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>เฝ้าระวังน้ำคลอง กทม.</title>
+<meta name="description" content="ระดับน้ำคลองและประตูระบายน้ำ เขตประเวศ สวนหลวง บางกะปิ ลาดพร้าว อัปเดตทุก 5 นาที จากข้อมูลสำนักการระบายน้ำ กทม. ดูว่าน้ำห่างตลิ่งอีกกี่เซนติเมตร">
+<meta property="og:type" content="website">
+<meta property="og:title" content="เฝ้าระวังน้ำคลอง กทม. — ประเวศ สวนหลวง บางกะปิ ลาดพร้าว">
+<meta property="og:description" content="น้ำในคลองห่างตลิ่งอีกกี่เซนติเมตร กำลังขึ้นหรือลง อัปเดตทุก 5 นาที">
+<meta property="og:url" content="https://monkichi27.github.io/bkk-flood-watch/">
+<meta property="og:locale" content="th_TH">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -39,6 +45,20 @@
   .s-warning { background: var(--warning-bg); color: var(--warning); }
   .s-critical { background: var(--critical-bg); color: var(--critical); }
   .s-offline { background: var(--offline-bg); color: var(--offline); }
+  .stale { display: none; margin: 8px 0 0; padding: 10px 12px; border-radius: 8px; background: var(--warning-bg); color: var(--warning); font-weight: 600; }
+  .stale.show { display: block; }
+  .fb { font-weight: 700; font-variant-numeric: tabular-nums; }
+  .trend { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .trend.up { color: var(--critical); }
+  .trend.down { color: var(--normal); }
+  .bma { font-size: .78rem; }
+  .near { padding: 4px 0; }
+  .near li { padding: 8px 14px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; gap: 0 10px; font-size: .9rem; }
+  .near li:first-child { border-top: 0; }
+  .near small { color: var(--muted); grid-column: 1 / -1; }
+  .near .badge { grid-row: auto; grid-column: 2; }
+  .near-tools { display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 14px; border-top: 1px solid var(--line); }
+  .near-tools button { font: inherit; font-size: .85rem; padding: 6px 12px; min-height: 36px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
   #map { height: 540px; border-radius: 10px; }
   @media (max-width: 600px) { #map { height: 440px; } }
   .zoom-hint { position: absolute; inset: 0; z-index: 1000; display: grid; place-items: center; pointer-events: none;
@@ -60,6 +80,7 @@
   .detail { padding: 0 14px 14px; color: var(--muted); font-size: .88rem; }
   .gauge { position: relative; height: 10px; border-radius: 5px; background: var(--offline-bg); margin: 8px 0 4px; }
   .gauge i { position: absolute; top: -3px; width: 2px; height: 16px; }
+  .detail small { display: block; margin-bottom: 4px; }
   .gauge .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
   svg.spark { width: 100%; height: 70px; display: block; }
   h2 { font-size: 1.05rem; margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); }
@@ -83,16 +104,17 @@
 <header>
   <h1>เฝ้าระวังระดับน้ำคลอง กทม.</h1>
   <p class="sub" id="sub" aria-live="polite">กำลังโหลดข้อมูล…</p>
+  <p class="stale" id="stale" role="alert"></p>
 </header>
 <main>
   <section>
     <div class="tiles" id="tiles"></div>
     <div id="map" class="panel" role="region" aria-label="แผนที่จุดวัดระดับน้ำ"></div>
     <div class="legend">
-      <span><i style="background:var(--critical)"></i>วิกฤต</span>
-      <span><i style="background:var(--warning)"></i>เตือนภัย</span>
+      <span><i style="background:var(--critical)"></i>ใกล้ล้นตลิ่ง (ห่างไม่ถึง <span data-band="danger">30</span> ซม.)</span>
+      <span><i style="background:var(--warning)"></i>เฝ้าระวัง (ไม่ถึง <span data-band="watch">60</span> ซม.)</span>
       <span><i style="background:var(--normal)"></i>ปกติ</span>
-      <span><i style="background:var(--offline)"></i>ขัดข้อง</span>
+      <span><i style="background:var(--offline)"></i>ไม่มีข้อมูลตลิ่ง / ขัดข้อง</span>
       <span><svg class="kind" viewBox="0 0 24 24" aria-hidden="true" data-glyph="canal"></svg>จุดวัดน้ำในคลอง</span>
       <span><svg class="kind" viewBox="0 0 24 24" aria-hidden="true" data-glyph="gate"></svg>ประตูระบายน้ำ</span>
       <span><svg class="kind" viewBox="0 0 24 24" aria-hidden="true" data-glyph="pump"></svg>สถานีสูบน้ำ (ฟ้า = กำลังสูบ)</span>
@@ -101,28 +123,38 @@
     <div class="panel"><ul class="list" id="list"></ul></div>
   </section>
   <aside>
-    <div class="panel"><h2>การแจ้งเตือนล่าสุด</h2><div id="alerts"></div></div>
+    <div class="panel"><h2 id="near-title">จุดวัดใกล้คุณ</h2><ul class="list near" id="near"></ul>
+      <div class="near-tools">
+        <button type="button" id="near-me">📍 ใช้ตำแหน่งของฉัน</button>
+        <button type="button" id="near-clear" hidden>ล้างตำแหน่ง</button>
+      </div></div>
+    <div class="panel"><h2>เหตุการณ์ล่าสุด (น้ำขึ้นเร็ว / เปลี่ยนระดับ)</h2><div id="alerts"></div></div>
     <div class="panel"><h2>สถานีสูบน้ำ / ประตูระบายน้ำ</h2><div id="pumps"></div></div>
   </aside>
 </main>
 <footer>
   ข้อมูล: สำนักการระบายน้ำ กรุงเทพมหานคร (<a href="https://weather.bangkok.go.th/water/Map" rel="noopener">weather.bangkok.go.th</a>) ·
-  ระดับน้ำหน่วย ม.รทก. (เมตร เทียบระดับทะเลปานกลาง) · สถานะ "เตือนภัย/วิกฤต" ใช้เกณฑ์ของ กทม. ·
-  ใช้ประกอบการตัดสินใจเท่านั้น ติดตามประกาศทางการที่ <a href="https://x.com/BKK_BEST" rel="noopener">@BKK_BEST</a> / โทร 1555
+  ระดับน้ำหน่วย ม.รทก. (เมตร เทียบระดับทะเลปานกลาง) ·
+  สีของแต่ละจุดดูจาก<b>ระยะผิวน้ำถึงตลิ่งฝั่งที่ต่ำกว่า</b> ตามความสูงตลิ่งที่ กทม. บันทึกไว้ ซึ่งบางจุดอาจคลาดเคลื่อน ·
+  สถานะ "เตือนภัย/วิกฤต" ของ กทม. แสดงไว้เป็นข้อมูลประกอบ เกณฑ์นี้มักต่ำกว่าตลิ่งมาก จึงไม่ได้แปลว่าน้ำใกล้ล้น ·
+  เว็บนี้ทำขึ้นเองโดยอาสา ไม่ใช่เว็บทางการของ กทม. ใช้ประกอบการตัดสินใจเท่านั้น ติดตามประกาศทางการที่ <a href="https://x.com/BKK_BEST" rel="noopener">@BKK_BEST</a> / โทร 1555
 </footer>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
 <script>
-const TH = { critical: 'วิกฤต', warning: 'เตือนภัย', normal: 'ปกติ', offline: 'ขัดข้อง' };
-const RANK = { critical: 0, warning: 1, normal: 2, offline: 3 };
+// `risk` (ours, by distance to the bank) drives colour and order; BMA's own label is secondary.
+const TH = { danger: 'ใกล้ล้นตลิ่ง', watch: 'เฝ้าระวัง', ok: 'ปกติ', unknown: 'ไม่มีข้อมูลตลิ่ง', offline: 'ขัดข้อง' };
+const RANK = { danger: 0, watch: 1, ok: 2, unknown: 3, offline: 4 };
+const CLS = { danger: 'critical', watch: 'warning', ok: 'normal', unknown: 'offline', offline: 'offline' };
+const BMA_TH = { critical: 'วิกฤต', warning: 'เตือนภัย', normal: 'ปกติ', offline: 'ขัดข้อง' };
+const STALE_MINUTES = 15;
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(`--${v}`).trim();
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const m = (v) => (v === null || v === undefined ? '–' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
 // Gate openings are distances, not elevations, so no +/- sign.
 const gm = (v) => (v === null || v === undefined ? '–' : v.toFixed(2));
 const time = (t) => (t ? new Date(t).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '–');
-// Some BMA thresholds are entered in cm (e.g. 320) — hide those rather than draw nonsense.
-const sane = (s) => s.warning !== null && s.critical !== null && Math.abs(s.critical) < 10;
+const cmTxt = (v) => `${Math.round(Math.abs(v) * 100)} ซม.`;
 
 // White line glyphs drawn inside each map pin (24×24 grid), one per station type.
 const GLYPH = {
@@ -142,38 +174,53 @@ function pin(kind, color) {
   });
 }
 
-let data, history, filter = 'ทั้งหมด', fittedFor, map, layer;
+let data, history, filter = 'ทั้งหมด', fittedFor, map, layer, near, nearLayer;
 
-function margin(s) {
+function freeboard(s) {
   // An offline sensor's last reading can be hours old — don't present it as current.
-  if (s.status === 'offline') return `ค่าล่าสุดเมื่อ ${time(s.timestamp)}`;
-  if (s.level === null || !sane(s)) return '';
-  const d = Math.round((s.level - s.critical) * 100);
-  if (d > 0) return `เกินระดับวิกฤต ${d} ซม.`;
-  const w = Math.round((s.warning - s.level) * 100);
-  return w > 0 ? `ต่ำกว่าระดับเตือนภัย ${w} ซม.` : `ต่ำกว่าระดับวิกฤต ${-d} ซม.`;
+  if (s.risk === 'offline') return `ค่าล่าสุดเมื่อ ${time(s.timestamp)}`;
+  if (s.freeboard === null || s.freeboard === undefined) return 'ไม่มีข้อมูลความสูงตลิ่ง';
+  return s.freeboard < 0 ? `สูงกว่าตลิ่ง ${cmTxt(s.freeboard)}` : `ห่างตลิ่ง ${cmTxt(s.freeboard)}`;
+}
+
+function trend(s) {
+  const t = s.trend60;
+  if (t === null || t === undefined) return '';
+  if (Math.abs(t) < 0.02) return '<span class="trend">→ ทรงตัว</span>';
+  return t > 0
+    ? `<span class="trend up">↑ ขึ้น ${cmTxt(t)}/ชม.</span>`
+    : `<span class="trend down">↓ ลง ${cmTxt(t)}/ชม.</span>`;
+}
+
+function bmaNote(s) {
+  if (!s.thresholdsOk) return 'เกณฑ์ของ กทม. ไม่ครบ/ไม่น่าเชื่อถือ';
+  return `กทม.: ${BMA_TH[s.status] ?? '–'}`;
 }
 
 function gauge(s) {
-  if (s.level === null || !sane(s)) return '';
-  const lo = Math.min(s.level, s.warning) - 0.5, hi = Math.max(s.level, s.critical) + 0.3;
-  const pct = (v) => ((v - lo) / (hi - lo)) * 100;
+  if (s.level === null || s.bank === null || s.risk === 'offline') return '';
+  const { dangerFreeboardM: dz = 0.3, watchFreeboardM: wz = 0.6 } = data;
+  const lo = Math.min(s.level, s.bank - 1.5) - 0.1, hi = Math.max(s.level, s.bank) + 0.15;
+  const pct = (v) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
   return `<div class="gauge" aria-hidden="true">
-    <div class="fill" style="width:${pct(s.level)}%;background:${css(s.status)}"></div>
-    <i style="left:${pct(s.warning)}%;background:${css('warning')};box-shadow:0 0 0 1px ${css('panel')}"></i>
-    <i style="left:${pct(s.critical)}%;background:${css('ink')};box-shadow:0 0 0 1px ${css('panel')}"></i></div>`;
+    <div class="fill" style="width:${pct(s.level)}%;background:${css(CLS[s.risk])}"></div>
+    <i style="left:${pct(s.bank - wz)}%;background:${css('warning')};box-shadow:0 0 0 1px ${css('panel')}"></i>
+    <i style="left:${pct(s.bank - dz)}%;background:${css('critical')};box-shadow:0 0 0 1px ${css('panel')}"></i>
+    <i style="left:${pct(s.bank)}%;background:${css('ink')};box-shadow:0 0 0 1px ${css('panel')}"></i></div>
+    <small>แถบ = ระดับน้ำ · เส้นดำ = ตลิ่ง · เส้นแดง/เหลือง = ห่างตลิ่ง ${Math.round(dz * 100)}/${Math.round(wz * 100)} ซม.</small>`;
 }
 
 async function spark(el, s) {
   history ??= fetch('history.json', { cache: 'no-store' }).then((r) => r.json());
   const pts = (await history)[s.id] ?? [];
   if (pts.length < 2) { el.textContent = 'ยังมีประวัติไม่พอสำหรับกราฟ (เก็บทุกครั้งที่ดึงข้อมูล)'; return; }
-  const vals = pts.map((p) => p.v).concat(sane(s) ? [s.warning, s.critical] : []);
+  const refs = [...(s.bank !== null ? [[s.bank, css('ink')]] : []), ...(s.thresholdsOk ? [[s.critical, css('critical')]] : [])];
+  const vals = pts.map((p) => p.v).concat(refs.map(([v]) => v));
   const lo = Math.min(...vals) - 0.05, hi = Math.max(...vals) + 0.05, t0 = pts[0].t, t1 = pts.at(-1).t;
   const x = (t) => ((t - t0) / (t1 - t0 || 1)) * 300, y = (v) => 66 - ((v - lo) / (hi - lo)) * 62;
   const line = (v, c) => `<line x1="0" x2="300" y1="${y(v)}" y2="${y(v)}" stroke="${c}" stroke-dasharray="4 3" stroke-width="1"/>`;
   el.innerHTML = `<svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none" role="img" aria-label="กราฟระดับน้ำ ${esc(s.name)} ตั้งแต่ ${time(t0)} ถึง ${time(t1)} ต่ำสุด ${m(Math.min(...pts.map(p=>p.v)))} สูงสุด ${m(Math.max(...pts.map(p=>p.v)))} ม.">
-    ${sane(s) ? line(s.warning, css('warning')) + line(s.critical, css('critical')) : ''}
+    ${refs.map(([v, c]) => line(v, c)).join('')}
     <polyline fill="none" stroke="${css('accent')}" stroke-width="2" vector-effect="non-scaling-stroke" points="${pts.map((p) => `${x(p.t)},${y(p.v)}`).join(' ')}"/></svg>
     <span>${time(t0)} → ${time(t1)} (${pts.length} จุด)</span>`;
 }
@@ -183,16 +230,20 @@ function render() {
   document.getElementById('sub').textContent =
     `เขต${districts.join(' · ')} — อัปเดตล่าสุด ${time(fetchedAt)} (ดึงข้อมูลทุก ${pollMinutes} นาที)`;
 
-  const count = (lv) => canals.filter((s) => s.status === lv).length;
-  document.getElementById('tiles').innerHTML = ['critical', 'warning', 'normal', 'offline']
-    .map((lv) => `<div class="tile s-${lv}"><b>${count(lv)}</b><span>${TH[lv]}</span></div>`).join('');
+  staleCheck();
+  document.querySelectorAll('[data-band]').forEach((el) => {
+    el.textContent = Math.round((el.dataset.band === 'danger' ? data.dangerFreeboardM ?? 0.3 : data.watchFreeboardM ?? 0.6) * 100);
+  });
+  const count = (...rs) => canals.filter((s) => rs.includes(s.risk)).length;
+  document.getElementById('tiles').innerHTML = [['danger'], ['watch'], ['ok'], ['unknown', 'offline']]
+    .map((rs) => `<div class="tile s-${CLS[rs[0]]}"><b>${count(...rs)}</b><span>${rs.length > 1 ? 'ไม่มีข้อมูล' : TH[rs[0]]}</span></div>`).join('');
 
   document.getElementById('filters').innerHTML = ['ทั้งหมด', ...districts]
     .map((d) => `<button type="button" aria-pressed="${d === filter}" data-d="${esc(d)}">${esc(d)}</button>`).join('');
 
   const shown = canals
     .filter((s) => filter === 'ทั้งหมด' || s.district.includes(filter))
-    .sort((a, b) => RANK[a.status] - RANK[b.status] || (b.level ?? -9) - (a.level ?? -9));
+    .sort((a, b) => RANK[a.risk] - RANK[b.risk] || (a.freeboard ?? 99) - (b.freeboard ?? 99));
 
   // Keep expanded rows open across the 60-second refresh.
   const open = new Set([...document.querySelectorAll('#list details[open]')].map((d) => d.dataset.id));
@@ -200,12 +251,13 @@ function render() {
     <li><details data-id="${esc(s.id)}"${open.has(s.id) ? ' open' : ''}>
       <summary>
         <span class="nm">${s.isGate ? '🚪 ' : ''}${esc(s.name)}</span>
-        <span class="badge s-${s.status}">${TH[s.status]}</span>
-        <span class="meta">${esc(s.district)} · <span class="lvl">${m(s.level)} ม.</span> ${esc(margin(s))}</span>
+        <span class="badge s-${CLS[s.risk]}">${TH[s.risk]}</span>
+        <span class="meta"><span class="fb">${esc(freeboard(s))}</span> ${trend(s)} · ${esc(s.district)} · <span class="lvl">${m(s.level)} ม.</span></span>
       </summary>
       <div class="detail">
         ${gauge(s)}
-        เตือนภัย ${m(s.warning)} · วิกฤต ${m(s.critical)} · สูงสุดวันนี้ ${m(s.maxToday)}
+        ระดับน้ำ ${m(s.level)} · ตลิ่ง ${m(s.bank)} · สูงสุดวันนี้ ${m(s.maxToday)}
+        <br><span class="bma">${esc(bmaNote(s))}${s.thresholdsOk ? ` (เกณฑ์เตือนภัย ${m(s.warning)} · วิกฤต ${m(s.critical)})` : ''}</span>
         ${s.levelOut !== null ? ` · ระดับน้ำนอกประตู ${m(s.levelOut)}` : ''}
         ${s.gates.length ? ` · บานประตูเปิด ${s.gates.map(gm).join(', ')} ม.` : ''}
         <br>คลอง: ${esc(s.canal)} · อ่านค่า ${time(s.timestamp)}
@@ -220,10 +272,10 @@ function render() {
     if (!s.lat || !s.lon) continue;
     pts.push([s.lat, s.lon]);
     L.marker([s.lat, s.lon], {
-      icon: pin(s.isGate ? 'gate' : 'canal', css(s.status)),
-      title: `${s.name} — ${TH[s.status]}`,
-      zIndexOffset: (3 - RANK[s.status]) * 1000, // worst stations drawn on top
-    }).bindPopup(`<b>${esc(s.name)}</b><br>${TH[s.status]} · ${m(s.level)} ม.<br>${esc(margin(s))}`).addTo(layer);
+      icon: pin(s.isGate ? 'gate' : 'canal', css(CLS[s.risk])),
+      title: `${s.name} — ${TH[s.risk]}`,
+      zIndexOffset: (4 - RANK[s.risk]) * 1000, // worst stations drawn on top
+    }).bindPopup(`<b>${esc(s.name)}</b><br>${TH[s.risk]} · ${esc(freeboard(s))}<br>${trend(s)} ระดับน้ำ ${m(s.level)} ม.`).addTo(layer);
   }
   for (const p of pumps) {
     if (!p.lat || !p.lon || (filter !== 'ทั้งหมด' && !p.district.includes(filter))) continue;
@@ -240,7 +292,8 @@ function render() {
 
   document.getElementById('alerts').innerHTML = recentAlerts.length
     ? recentAlerts.slice(0, 12).map((a) => `<div class="alert"><time>${time(a.at)}</time><b>${esc(a.title)}</b>\n${esc(a.body)}</div>`).join('')
-    : '<div class="empty">ยังไม่มีการแจ้งเตือน</div>';
+    : '<div class="empty">ยังไม่มีเหตุการณ์</div>';
+  renderNear();
 
   document.getElementById('pumps').innerHTML = pumps
     .filter((p) => filter === 'ทั้งหมด' || p.district.includes(filter))
@@ -259,7 +312,56 @@ async function load() {
     render();
   } catch (e) {
     document.getElementById('sub').textContent = `โหลดข้อมูลไม่สำเร็จ: ${e.message}`;
+    staleCheck();
   }
+}
+
+// The page refreshes every minute but the data only changes when the poller runs; say so
+// loudly when it has stopped, or people will read old numbers as current.
+function staleCheck() {
+  const el = document.getElementById('stale');
+  const age = data?.fetchedAt ? (Date.now() - data.fetchedAt) / 60_000 : Infinity;
+  el.classList.toggle('show', age > STALE_MINUTES);
+  el.textContent = age === Infinity
+    ? '⚠ ยังโหลดข้อมูลไม่ได้'
+    : `⚠ ข้อมูลไม่ได้อัปเดตมา ${Math.round(age)} นาที (ปกติอัปเดตทุก 5 นาที) ตัวเลขด้านล่างอาจไม่ใช่สถานการณ์ปัจจุบัน`;
+}
+
+const km = (a, b) => {
+  const r = Math.PI / 180, dLat = (b[0] - a[0]) * r, dLon = (b[1] - a[1]) * r;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(a[0] * r) * Math.cos(b[0] * r) * Math.sin(dLon / 2) ** 2;
+  return 12742 * Math.asin(Math.sqrt(h));
+};
+
+function renderNear() {
+  const ul = document.getElementById('near');
+  document.getElementById('near-clear').hidden = !near || near.fromUrl;
+  document.getElementById('near-title').textContent = near ? `จุดวัดใกล้${near.label}` : 'จุดวัดใกล้คุณ';
+  nearLayer.clearLayers();
+  if (!near) {
+    ul.innerHTML = '<li class="empty">กดปุ่มด้านล่างเพื่อดู 5 จุดที่ใกล้ที่สุด หรือเปิดลิงก์ที่มี <code>?near=ละติจูด,ลองจิจูด</code></li>';
+    return;
+  }
+  L.circleMarker(near.at, { radius: 7, color: css('accent'), weight: 3, fillOpacity: 0.4 }).bindTooltip(near.label).addTo(nearLayer);
+  ul.innerHTML = data.canals
+    .filter((s) => s.lat && s.lon)
+    .map((s) => ({ s, d: km(near.at, [s.lat, s.lon]) }))
+    .sort((a, b) => a.d - b.d)
+    .slice(0, 5)
+    .map(({ s, d }) => `<li><span><b>${esc(s.name)}</b></span><span class="badge s-${CLS[s.risk]}">${TH[s.risk]}</span>
+      <small><span class="fb">${esc(freeboard(s))}</span> ${trend(s)} · ห่าง ${d.toFixed(1)} กม.</small></li>`)
+    .join('');
+}
+
+function readNear() {
+  const q = new URLSearchParams(location.search);
+  const m = q.get('near')?.match(/^(-?\d+(?:\.\d+)?),(-?\d+(?:\.\d+)?)$/);
+  if (m) return { at: [Number(m[1]), Number(m[2])], label: q.get('label') || 'จุดที่เลือก', fromUrl: true };
+  try {
+    const saved = JSON.parse(localStorage.getItem('near'));
+    if (Array.isArray(saved?.at)) return saved;
+  } catch {}
+  return null;
 }
 
 document.querySelectorAll('svg[data-glyph]').forEach((el) => { el.innerHTML = GLYPH[el.dataset.glyph]; });
@@ -283,6 +385,29 @@ map = L.map('map').setView([13.73, 100.65], 12);
 }
 L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
 layer = L.layerGroup().addTo(map);
+nearLayer = L.layerGroup().addTo(map);
+near = readNear();
+
+document.getElementById('near-me').addEventListener('click', (e) => {
+  const btn = e.currentTarget;
+  if (!navigator.geolocation) { btn.textContent = 'เบราว์เซอร์นี้หาตำแหน่งไม่ได้'; return; }
+  btn.textContent = 'กำลังหาตำแหน่ง…';
+  navigator.geolocation.getCurrentPosition(
+    (p) => {
+      near = { at: [p.coords.latitude, p.coords.longitude], label: 'คุณ' };
+      try { localStorage.setItem('near', JSON.stringify(near)); } catch {}
+      btn.textContent = '📍 ใช้ตำแหน่งของฉัน';
+      if (data?.canals) renderNear();
+    },
+    () => { btn.textContent = 'หาตำแหน่งไม่ได้ (ไม่ได้อนุญาต?)'; },
+    { enableHighAccuracy: false, timeout: 10_000 },
+  );
+});
+document.getElementById('near-clear').addEventListener('click', () => {
+  near = null;
+  try { localStorage.removeItem('near'); } catch {}
+  renderNear();
+});
 
 document.getElementById('filters').addEventListener('click', (e) => {
   const d = e.target.closest('button')?.dataset.d;

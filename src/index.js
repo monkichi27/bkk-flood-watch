@@ -3,7 +3,7 @@ import { readFile, writeFile, mkdir, rename, cp } from 'node:fs/promises';
 import { join, extname, normalize } from 'node:path';
 import { config } from './config.js';
 import { fetchBma } from './sources/bma.js';
-import { evaluate, updateHistory } from './alerts.js';
+import { evaluate, updateHistory, trendOver, STATE_VERSION } from './alerts.js';
 import { channels, dispatch } from './notify.js';
 
 const statePath = join(config.dataDir, 'state.json');
@@ -18,8 +18,14 @@ const chans = channels(config.notify);
 
 async function poll() {
   const now = Date.now();
-  const { canals, pumps } = await fetchBma(config.districts, { now, staleMinutes: config.staleMinutes });
+  const { canals, pumps } = await fetchBma(config.districts, {
+    now,
+    staleMinutes: config.staleMinutes,
+    dangerFreeboardM: config.dangerFreeboardM,
+    watchFreeboardM: config.watchFreeboardM,
+  });
   const history = updateHistory(store.history, canals, { now, historyHours: config.historyHours });
+  for (const s of canals) s.trend60 = s.risk === 'offline' ? null : trendOver(history[s.id] ?? [], 60, now);
   const { alerts, state } = evaluate(store.alertState, canals, history, config, now);
   await dispatch(alerts, chans);
 
@@ -30,10 +36,10 @@ async function poll() {
   store = { alertState: state, history, snapshot: { fetchedAt: now, canals, pumps }, recentAlerts };
   await writeJson(statePath, store);
 
-  const count = (lv) => canals.filter((s) => s.status === lv).length;
+  const count = (r) => canals.filter((s) => s.risk === r).length;
   console.log(
     `[poll] ${new Date(now).toLocaleString('th-TH')} canals=${canals.length} ` +
-      `critical=${count('critical')} warning=${count('warning')} offline=${count('offline')} ` +
+      `danger=${count('danger')} watch=${count('watch')} unknown=${count('unknown')} offline=${count('offline')} ` +
       `pumps=${pumps.length} alerts=${alerts.length}`,
   );
 }
@@ -51,6 +57,8 @@ const statusPayload = () => ({
   districts: config.districts,
   recentAlerts: store.recentAlerts,
   pollMinutes: config.pollMinutes,
+  dangerFreeboardM: config.dangerFreeboardM,
+  watchFreeboardM: config.watchFreeboardM,
 });
 
 /** Write the dashboard's data files next to a copy of public/ for static hosting. */
@@ -87,6 +95,8 @@ function serve() {
 
 await mkdir(config.dataDir, { recursive: true });
 store = { ...store, ...(await readJson(statePath, {})) };
+// Alert state from an older version compared different statuses; start it (and the alert feed) fresh.
+if (store.alertState && store.alertState.version !== STATE_VERSION) store = { ...store, alertState: null, recentAlerts: [] };
 console.log(
   `[start] districts=${config.districts.join(',')} every ${config.pollMinutes}m, channels: ${
     ['console', ...chans.map(([n]) => n)].join(', ')

@@ -18,6 +18,9 @@ export const config = {
   // Rapid-rise alert: rise of at least this many metres within the window.
   riseThresholdM: Number(env.RISE_THRESHOLD_M || 0.1),
   riseWindowMinutes: Number(env.RISE_WINDOW_MINUTES || 60),
+  // Colour bands by distance from water surface to the lower bank (metres).
+  dangerFreeboardM: Number(env.DANGER_FREEBOARD_M || 0.3),
+  watchFreeboardM: Number(env.WATCH_FREEBOARD_M || 0.6),
   // A reading older than this is treated as stale / sensor offline.
   staleMinutes: Number(env.STALE_MINUTES || 60),
   alertCooldownMinutes: Number(env.ALERT_COOLDOWN_MINUTES || 120),

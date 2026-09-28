@@ -5,8 +5,6 @@ const HEADERS = { 'User-Agent': 'bkk-flood-watch/0.1 (community flood alert)' };
 
 // BMA priorityStatus → our level. 0/1 = sensor down, 2 = normal, 3 = warning, 4 = critical.
 const LEVELS = { 0: 'offline', 1: 'offline', 2: 'normal', 3: 'warning', 4: 'critical' };
-export const LEVEL_RANK = { offline: 0, normal: 1, warning: 2, critical: 3 };
-export const LEVEL_TH = { offline: 'ขัดข้อง', normal: 'ปกติ', warning: 'เตือนภัย', critical: 'วิกฤต' };
 
 const parseDotNetDate = (s) => {
   const m = typeof s === 'string' && s.match(/\/Date\((-?\d+)\)\//);
@@ -15,7 +13,31 @@ const parseDotNetDate = (s) => {
 const num = (v) => (v === null || v === undefined || v === -99 ? null : Number(v));
 const inDistricts = (name, districts) => !!name && districts.some((d) => name.includes(d));
 
-export function parseWaterStations(raw, districts, { now = Date.now(), staleMinutes = 60 } = {}) {
+// BMA's own warning/critical marks sit far below the bank at many stations (they read as
+// "above the canal's target operating level", not "about to overflow"), and some are
+// placeholders (-0.2 / 0) or entered in cm (320 / 450). Our headline measure is the
+// distance from the water surface to the lower bank instead.
+export const RISK_RANK = { ok: 0, watch: 1, danger: 2 };
+export const RISK_TH = { danger: 'ใกล้ล้นตลิ่ง', watch: 'เฝ้าระวัง', ok: 'ปกติ', unknown: 'ไม่มีข้อมูลตลิ่ง', offline: 'ขัดข้อง' };
+
+/** Lower of the two banks, or null when BMA has no usable bank height (missing, 0, or in cm). */
+export function bankLevel(left, right) {
+  const banks = [num(left), num(right)].filter((v) => v !== null && v > 0 && v < 10);
+  return banks.length ? Math.min(...banks) : null;
+}
+
+/** Placeholder (-0.2/0) and cm-scale thresholds are not meaningful; show them as missing. */
+export const thresholdsOk = (warning, critical) =>
+  warning !== null && critical !== null && critical > 0 && critical < 10 && warning <= critical;
+
+export function riskOf({ stale, level, freeboard }, { dangerFreeboardM = 0.3, watchFreeboardM = 0.6 } = {}) {
+  if (stale) return 'offline';
+  if (level === null || freeboard === null) return 'unknown';
+  if (freeboard < dangerFreeboardM) return 'danger';
+  return freeboard < watchFreeboardM ? 'watch' : 'ok';
+}
+
+export function parseWaterStations(raw, districts, { now = Date.now(), staleMinutes = 60, ...riskOpts } = {}) {
   return raw
     .filter((r) => inDistricts(r.district_name, districts))
     .map((r) => {
@@ -24,6 +46,9 @@ export function parseWaterStations(raw, districts, { now = Date.now(), staleMinu
       const gates = [1, 2, 3, 4, 5, 6]
         .slice(0, r.water_gate_count || 0)
         .map((i) => num(r[`watergate0${i}`]));
+      const level = num(r.wl_in);
+      const bank = bankLevel(r.left_bank, r.right_bank);
+      const freeboard = level !== null && bank !== null ? Math.round((bank - level) * 100) / 100 : null;
       return {
         id: `wl-${r.water_id}`,
         kind: 'canal',
@@ -33,13 +58,18 @@ export function parseWaterStations(raw, districts, { now = Date.now(), staleMinu
         district: r.district_name,
         lat: r.latitude,
         lon: r.longitude,
-        level: num(r.wl_in),
+        level,
         levelOut: num(r.wl_out01),
         warning: num(r.warning),
         critical: num(r.critical),
+        thresholdsOk: thresholdsOk(num(r.warning), num(r.critical)),
+        bank,
+        freeboard,
+        risk: riskOf({ stale, level, freeboard }, riskOpts),
         maxToday: num(r.max_in_day),
         gates,
         isGate: (r.water_gate_count || 0) > 0 || /ปตร\./.test(r.water_shortname || ''),
+        // BMA's own label, kept for reference; `risk` drives colours and alerts.
         status: stale ? 'offline' : LEVELS[r.priorityStatus] ?? 'offline',
         sourceStatus: r.txtStatus,
         timestamp: ts,

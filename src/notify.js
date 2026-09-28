@@ -1,4 +1,4 @@
-const PRIORITY = { critical: 5, warning: 4, normal: 3, offline: 2 };
+const PRIORITY = { danger: 5, watch: 4, ok: 3 };
 const post = (url, body, headers = {}) =>
   fetch(url, {
     method: 'POST',
@@ -21,7 +21,7 @@ export function channels(n) {
           // Header values must be ASCII; ntfy accepts RFC 2047 encoded titles.
           Title: `=?UTF-8?B?${Buffer.from(a.title).toString('base64')}?=`,
           Priority: String(PRIORITY[a.severity] ?? 3),
-          Tags: a.severity === 'critical' ? 'rotating_light' : 'ocean',
+          Tags: a.severity === 'danger' ? 'rotating_light' : 'ocean',
           ...(a.station?.url ? { Click: a.station.url } : {}),
         }),
     ]);
