@@ -105,10 +105,28 @@ export function parsePumpStations(raw, districts, { now = Date.now(), staleMinut
   });
 }
 
-async function getJson(url, init) {
-  const res = await fetch(url, { ...init, headers: { ...HEADERS, ...init?.headers }, signal: AbortSignal.timeout(30_000) });
-  if (!res.ok) throw new Error(`${url} → HTTP ${res.status}`);
-  return res.json();
+// The BMA site intermittently answers 403/5xx or times out for a single request, then
+// recovers seconds later; retry a couple of times before failing the whole poll.
+const RETRY_DELAYS_MS = [5_000, 15_000];
+const retryable = (status) => status === 403 || status === 429 || status >= 500;
+
+export async function getJson(url, init, delays = RETRY_DELAYS_MS) {
+  for (let attempt = 0; ; attempt++) {
+    let res, err;
+    try {
+      res = await fetch(url, { ...init, headers: { ...HEADERS, ...init?.headers }, signal: AbortSignal.timeout(30_000) });
+    } catch (e) {
+      err = e; // network error or timeout
+    }
+    if (res?.ok) return res.json();
+    if (res) {
+      err = new Error(`${url} → HTTP ${res.status}`);
+      if (!retryable(res.status)) throw err;
+    }
+    if (attempt >= delays.length) throw err;
+    console.warn(`[bma] ${err.message} — retrying in ${delays[attempt] / 1000}s`);
+    await new Promise((r) => setTimeout(r, delays[attempt]));
+  }
 }
 
 export async function fetchBma(districts, opts) {

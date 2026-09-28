@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { parseWaterStations, parsePumpStations, bankLevel, riskOf } from '../src/sources/bma.js';
+import { parseWaterStations, parsePumpStations, bankLevel, riskOf, getJson } from '../src/sources/bma.js';
 import { evaluate, updateHistory, riseOver, trendOver } from '../src/alerts.js';
 
 const load = (f) => JSON.parse(readFileSync(new URL(`./fixtures/${f}`, import.meta.url)));
@@ -125,4 +125,24 @@ test('trend needs readings spanning at least half the window', () => {
 test('history drops points older than the retention window', () => {
   const h = updateHistory({ 'wl-1': [{ t: NOW - 49 * 3600_000, v: 1 }] }, [], { now: NOW, historyHours: 48 });
   assert.deepEqual(h['wl-1'], []);
+});
+
+test('BMA requests retry transient 403/5xx and network errors, but not 404', async (t) => {
+  const replies = [];
+  t.mock.method(globalThis, 'fetch', async () => {
+    const r = replies.shift();
+    if (r instanceof Error) throw r;
+    return new Response(JSON.stringify({ ok: true }), { status: r });
+  });
+  t.mock.method(console, 'warn', () => {});
+
+  replies.push(403, new Error('timeout'), 200);
+  assert.deepEqual(await getJson('https://x/a', {}, [0, 0]), { ok: true });
+
+  replies.push(503, 503, 503);
+  await assert.rejects(getJson('https://x/b', {}, [0, 0]), /HTTP 503/);
+
+  replies.push(404);
+  await assert.rejects(getJson('https://x/c', {}, [0, 0]), /HTTP 404/);
+  assert.equal(replies.length, 0);
 });
