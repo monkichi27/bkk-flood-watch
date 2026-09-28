@@ -1,0 +1,65 @@
+name: poll water levels
+
+on:
+  schedule:
+    - cron: '*/5 * * * *' # GitHub may delay scheduled runs by several minutes under load
+  workflow_dispatch:
+
+# Runs must not overlap: each one reads the state the previous run wrote.
+concurrency:
+  group: poll
+  cancel-in-progress: false
+
+permissions:
+  contents: write # push state to the `data` branch
+  pages: write
+  id-token: write
+
+jobs:
+  poll:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+
+      - name: Restore state from data branch
+        run: |
+          mkdir -p data
+          if git fetch --depth=1 origin data 2>/dev/null; then
+            git show FETCH_HEAD:state.json > data/state.json
+          fi
+
+      - name: Poll BMA and send alerts
+        run: node src/index.js --once --out site
+        env:
+          DISTRICTS: ${{ vars.DISTRICTS }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          LINE_CHANNEL_ACCESS_TOKEN: ${{ secrets.LINE_CHANNEL_ACCESS_TOKEN }}
+          LINE_TO: ${{ secrets.LINE_TO }}
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+
+      # Single force-pushed commit keeps the branch tiny instead of 288 commits a day.
+      - name: Save state to data branch
+        run: |
+          cd data
+          git init -q -b data
+          git add state.json
+          git -c user.name=flood-watch-bot -c user.email=actions@users.noreply.github.com \
+            commit -q -m "state $(date -u +%FT%TZ)"
+          git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - id: deploy
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,303 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>เฝ้าระวังน้ำคลอง กทม.</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🌊</text></svg>">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+  :root {
+    --bg: #f4f6f7; --panel: #ffffff; --ink: #14202b; --muted: #55636f; --line: #dde3e7;
+    --normal: #1c7f5e; --warning: #a35c00; --critical: #c0283a; --offline: #6b7479;
+    --normal-bg: #e3f4ec; --warning-bg: #fdf0dc; --critical-bg: #fbe5e8; --offline-bg: #eceff1;
+    --accent: #0b5cad;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0f1519; --panel: #172026; --ink: #e7edf1; --muted: #9aa8b2; --line: #2a363e;
+      --normal: #4fd1a1; --warning: #f5b454; --critical: #ff7b8a; --offline: #9aa3a8;
+      --normal-bg: #16332a; --warning-bg: #3a2b14; --critical-bg: #3e1a20; --offline-bg: #242d33;
+      --accent: #6cb4ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 'IBM Plex Sans Thai', system-ui, sans-serif; }
+  header { padding: 20px 16px 8px; max-width: 1200px; margin: 0 auto; }
+  h1 { font-size: 1.45rem; margin: 0 0 2px; }
+  .sub { color: var(--muted); margin: 0; font-size: .9rem; }
+  main { max-width: 1200px; margin: 0 auto; padding: 8px 16px 40px; display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr) 380px; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  .tiles { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 12px; }
+  .tile { padding: 10px 12px; border-radius: 8px; }
+  .tile b { display: block; font-size: 1.6rem; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tile span { font-size: .82rem; }
+  .s-normal { background: var(--normal-bg); color: var(--normal); }
+  .s-warning { background: var(--warning-bg); color: var(--warning); }
+  .s-critical { background: var(--critical-bg); color: var(--critical); }
+  .s-offline { background: var(--offline-bg); color: var(--offline); }
+  #map { height: 540px; border-radius: 10px; }
+  @media (max-width: 600px) { #map { height: 440px; } }
+  .zoom-hint { position: absolute; inset: 0; z-index: 1000; display: grid; place-items: center; pointer-events: none;
+    background: rgb(0 0 0 / .45); color: #fff; font-weight: 600; opacity: 0; transition: opacity .2s; border-radius: 10px; }
+  .zoom-hint.show { opacity: 1; }
+  .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0; }
+  .filters button { font: inherit; font-size: .88rem; padding: 6px 12px; min-height: 36px; border-radius: 999px; border: 1px solid var(--line); background: var(--panel); color: var(--ink); cursor: pointer; }
+  .filters button[aria-pressed="true"] { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  button:focus-visible, a:focus-visible, summary:focus-visible { outline: 3px solid var(--accent); outline-offset: 2px; }
+  .list { list-style: none; margin: 0; padding: 0; }
+  .list li { border-top: 1px solid var(--line); }
+  .list li:first-child { border-top: 0; }
+  details summary { list-style: none; cursor: pointer; padding: 10px 14px; display: grid; grid-template-columns: 1fr auto; gap: 2px 10px; align-items: center; }
+  details summary::-webkit-details-marker { display: none; }
+  .nm { font-weight: 600; }
+  .meta { color: var(--muted); font-size: .82rem; grid-column: 1; }
+  .badge { grid-row: 1 / span 2; grid-column: 2; font-size: .8rem; font-weight: 600; padding: 3px 10px; border-radius: 999px; text-align: center; min-width: 70px; }
+  .lvl { font-variant-numeric: tabular-nums; }
+  .detail { padding: 0 14px 14px; color: var(--muted); font-size: .88rem; }
+  .gauge { position: relative; height: 10px; border-radius: 5px; background: var(--offline-bg); margin: 8px 0 4px; }
+  .gauge i { position: absolute; top: -3px; width: 2px; height: 16px; }
+  .gauge .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 5px; }
+  svg.spark { width: 100%; height: 70px; display: block; }
+  h2 { font-size: 1.05rem; margin: 0; padding: 12px 14px; border-bottom: 1px solid var(--line); }
+  aside { display: flex; flex-direction: column; gap: 16px; }
+  .alert { padding: 10px 14px; border-top: 1px solid var(--line); font-size: .88rem; white-space: pre-line; }
+  .alert time { color: var(--muted); font-size: .78rem; display: block; }
+  .pump { padding: 8px 14px; border-top: 1px solid var(--line); display: grid; grid-template-columns: 1fr auto; font-size: .88rem; }
+  .pump small { color: var(--muted); grid-column: 1 / -1; }
+  .pin { width: 24px; height: 32px; filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / .4)); }
+  .pin svg { display: block; width: 100%; height: 100%; }
+  .legend .kind { width: 18px; height: 18px; color: var(--muted); }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .8rem; color: var(--muted); margin-top: 6px; }
+  .legend span { display: inline-flex; align-items: center; gap: 5px; }
+  .legend i { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .empty { padding: 14px; color: var(--muted); }
+  footer { max-width: 1200px; margin: 0 auto; padding: 0 16px 32px; color: var(--muted); font-size: .8rem; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<header>
+  <h1>เฝ้าระวังระดับน้ำคลอง กทม.</h1>
+  <p class="sub" id="sub" aria-live="polite">กำลังโหลดข้อมูล…</p>
+</header>
+<main>
+  <section>
+    <div class="tiles" id="tiles"></div>
+    <div id="map" class="panel" role="region" aria-label="แผนที่จุดวัดระดับน้ำ"></div>
+    <div class="legend">
+      <span><i style="background:var(--critical)"></i>วิกฤต</span>
+      <span><i style="background:var(--warning)"></i>เตือนภัย</span>
+      <span><i style="background:var(--normal)"></i>ปกติ</span>
+      <span><i style="background:var(--offline)"></i>ขัดข้อง</span>
+      <span><svg class="kind" viewBox="0 0 24 24" aria-hidden="true" data-glyph="canal"></svg>จุดวัดน้ำในคลอง</span>
+      <span><svg class="kind" viewBox="0 0 24 24" aria-hidden="true" data-glyph="gate"></svg>ประตูระบายน้ำ</span>
+      <span><svg class="kind" viewBox="0 0 24 24" aria-hidden="true" data-glyph="pump"></svg>สถานีสูบน้ำ (ฟ้า = กำลังสูบ)</span>
+    </div>
+    <div class="filters" id="filters" role="group" aria-label="กรองตามเขต"></div>
+    <div class="panel"><ul class="list" id="list"></ul></div>
+  </section>
+  <aside>
+    <div class="panel"><h2>การแจ้งเตือนล่าสุด</h2><div id="alerts"></div></div>
+    <div class="panel"><h2>สถานีสูบน้ำ / ประตูระบายน้ำ</h2><div id="pumps"></div></div>
+  </aside>
+</main>
+<footer>
+  ข้อมูล: สำนักการระบายน้ำ กรุงเทพมหานคร (<a href="https://weather.bangkok.go.th/water/Map" rel="noopener">weather.bangkok.go.th</a>) ·
+  ระดับน้ำหน่วย ม.รทก. (เมตร เทียบระดับทะเลปานกลาง) · สถานะ "เตือนภัย/วิกฤต" ใช้เกณฑ์ของ กทม. ·
+  ใช้ประกอบการตัดสินใจเท่านั้น ติดตามประกาศทางการที่ <a href="https://x.com/BKK_BEST" rel="noopener">@BKK_BEST</a> / โทร 1555
+</footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script>
+const TH = { critical: 'วิกฤต', warning: 'เตือนภัย', normal: 'ปกติ', offline: 'ขัดข้อง' };
+const RANK = { critical: 0, warning: 1, normal: 2, offline: 3 };
+const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(`--${v}`).trim();
+const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+const m = (v) => (v === null || v === undefined ? '–' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
+// Gate openings are distances, not elevations, so no +/- sign.
+const gm = (v) => (v === null || v === undefined ? '–' : v.toFixed(2));
+const time = (t) => (t ? new Date(t).toLocaleString('th-TH', { dateStyle: 'short', timeStyle: 'short' }) : '–');
+// Some BMA thresholds are entered in cm (e.g. 320) — hide those rather than draw nonsense.
+const sane = (s) => s.warning !== null && s.critical !== null && Math.abs(s.critical) < 10;
+
+// White line glyphs drawn inside each map pin (24×24 grid), one per station type.
+const GLYPH = {
+  canal: '<path d="M3 8.5c2.2 0 2.2-2 4.5-2s2.3 2 4.5 2 2.2-2 4.5-2 2.3 2 4.5 2M3 13c2.2 0 2.2-2 4.5-2s2.3 2 4.5 2 2.2-2 4.5-2 2.3 2 4.5 2M3 17.5c2.2 0 2.2-2 4.5-2s2.3 2 4.5 2 2.2-2 4.5-2 2.3 2 4.5 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>',
+  gate: '<path d="M5 21V3M19 21V3M5 7h14M9 7v7M15 7v7M5 14h14M3 21h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
+  // Three-blade impeller.
+  pump: '<g fill="currentColor"><ellipse cx="12" cy="6.2" rx="3" ry="4.6"/><ellipse cx="12" cy="6.2" rx="3" ry="4.6" transform="rotate(120 12 12)"/><ellipse cx="12" cy="6.2" rx="3" ry="4.6" transform="rotate(240 12 12)"/><circle cx="12" cy="12" r="2.6"/></g>',
+};
+
+function pin(kind, color) {
+  return L.divIcon({
+    className: '',
+    iconSize: [24, 32], iconAnchor: [12, 31], popupAnchor: [0, -28],
+    html: `<div class="pin"><svg viewBox="0 0 30 40" aria-hidden="true">
+      <path d="M15 39S2.5 24.8 2.5 14.5a12.5 12.5 0 0 1 25 0C27.5 24.8 15 39 15 39z" fill="${color}" stroke="#fff" stroke-width="2"/>
+      <g transform="translate(6.5 6) scale(.71)" color="#fff">${GLYPH[kind]}</g></svg></div>`,
+  });
+}
+
+let data, history, filter = 'ทั้งหมด', fittedFor, map, layer;
+
+function margin(s) {
+  // An offline sensor's last reading can be hours old — don't present it as current.
+  if (s.status === 'offline') return `ค่าล่าสุดเมื่อ ${time(s.timestamp)}`;
+  if (s.level === null || !sane(s)) return '';
+  const d = Math.round((s.level - s.critical) * 100);
+  if (d > 0) return `เกินระดับวิกฤต ${d} ซม.`;
+  const w = Math.round((s.warning - s.level) * 100);
+  return w > 0 ? `ต่ำกว่าระดับเตือนภัย ${w} ซม.` : `ต่ำกว่าระดับวิกฤต ${-d} ซม.`;
+}
+
+function gauge(s) {
+  if (s.level === null || !sane(s)) return '';
+  const lo = Math.min(s.level, s.warning) - 0.5, hi = Math.max(s.level, s.critical) + 0.3;
+  const pct = (v) => ((v - lo) / (hi - lo)) * 100;
+  return `<div class="gauge" aria-hidden="true">
+    <div class="fill" style="width:${pct(s.level)}%;background:${css(s.status)}"></div>
+    <i style="left:${pct(s.warning)}%;background:${css('warning')};box-shadow:0 0 0 1px ${css('panel')}"></i>
+    <i style="left:${pct(s.critical)}%;background:${css('ink')};box-shadow:0 0 0 1px ${css('panel')}"></i></div>`;
+}
+
+async function spark(el, s) {
+  history ??= fetch('history.json', { cache: 'no-store' }).then((r) => r.json());
+  const pts = (await history)[s.id] ?? [];
+  if (pts.length < 2) { el.textContent = 'ยังมีประวัติไม่พอสำหรับกราฟ (เก็บทุกครั้งที่ดึงข้อมูล)'; return; }
+  const vals = pts.map((p) => p.v).concat(sane(s) ? [s.warning, s.critical] : []);
+  const lo = Math.min(...vals) - 0.05, hi = Math.max(...vals) + 0.05, t0 = pts[0].t, t1 = pts.at(-1).t;
+  const x = (t) => ((t - t0) / (t1 - t0 || 1)) * 300, y = (v) => 66 - ((v - lo) / (hi - lo)) * 62;
+  const line = (v, c) => `<line x1="0" x2="300" y1="${y(v)}" y2="${y(v)}" stroke="${c}" stroke-dasharray="4 3" stroke-width="1"/>`;
+  el.innerHTML = `<svg class="spark" viewBox="0 0 300 70" preserveAspectRatio="none" role="img" aria-label="กราฟระดับน้ำ ${esc(s.name)} ตั้งแต่ ${time(t0)} ถึง ${time(t1)} ต่ำสุด ${m(Math.min(...pts.map(p=>p.v)))} สูงสุด ${m(Math.max(...pts.map(p=>p.v)))} ม.">
+    ${sane(s) ? line(s.warning, css('warning')) + line(s.critical, css('critical')) : ''}
+    <polyline fill="none" stroke="${css('accent')}" stroke-width="2" vector-effect="non-scaling-stroke" points="${pts.map((p) => `${x(p.t)},${y(p.v)}`).join(' ')}"/></svg>
+    <span>${time(t0)} → ${time(t1)} (${pts.length} จุด)</span>`;
+}
+
+function render() {
+  const { canals, pumps, districts, recentAlerts, fetchedAt, pollMinutes } = data;
+  document.getElementById('sub').textContent =
+    `เขต${districts.join(' · ')} — อัปเดตล่าสุด ${time(fetchedAt)} (ดึงข้อมูลทุก ${pollMinutes} นาที)`;
+
+  const count = (lv) => canals.filter((s) => s.status === lv).length;
+  document.getElementById('tiles').innerHTML = ['critical', 'warning', 'normal', 'offline']
+    .map((lv) => `<div class="tile s-${lv}"><b>${count(lv)}</b><span>${TH[lv]}</span></div>`).join('');
+
+  document.getElementById('filters').innerHTML = ['ทั้งหมด', ...districts]
+    .map((d) => `<button type="button" aria-pressed="${d === filter}" data-d="${esc(d)}">${esc(d)}</button>`).join('');
+
+  const shown = canals
+    .filter((s) => filter === 'ทั้งหมด' || s.district.includes(filter))
+    .sort((a, b) => RANK[a.status] - RANK[b.status] || (b.level ?? -9) - (a.level ?? -9));
+
+  // Keep expanded rows open across the 60-second refresh.
+  const open = new Set([...document.querySelectorAll('#list details[open]')].map((d) => d.dataset.id));
+  document.getElementById('list').innerHTML = shown.map((s) => `
+    <li><details data-id="${esc(s.id)}"${open.has(s.id) ? ' open' : ''}>
+      <summary>
+        <span class="nm">${s.isGate ? '🚪 ' : ''}${esc(s.name)}</span>
+        <span class="badge s-${s.status}">${TH[s.status]}</span>
+        <span class="meta">${esc(s.district)} · <span class="lvl">${m(s.level)} ม.</span> ${esc(margin(s))}</span>
+      </summary>
+      <div class="detail">
+        ${gauge(s)}
+        เตือนภัย ${m(s.warning)} · วิกฤต ${m(s.critical)} · สูงสุดวันนี้ ${m(s.maxToday)}
+        ${s.levelOut !== null ? ` · ระดับน้ำนอกประตู ${m(s.levelOut)}` : ''}
+        ${s.gates.length ? ` · บานประตูเปิด ${s.gates.map(gm).join(', ')} ม.` : ''}
+        <br>คลอง: ${esc(s.canal)} · อ่านค่า ${time(s.timestamp)}
+        ${s.url ? ` · <a href="${esc(s.url)}" rel="noopener" target="_blank">ดูกราฟ กทม.</a>` : ''}
+        <div class="sparkbox"></div>
+      </div>
+    </details></li>`).join('') || '<li class="empty">ไม่มีข้อมูล</li>';
+
+  layer.clearLayers();
+  const pts = [];
+  for (const s of shown) {
+    if (!s.lat || !s.lon) continue;
+    pts.push([s.lat, s.lon]);
+    L.marker([s.lat, s.lon], {
+      icon: pin(s.isGate ? 'gate' : 'canal', css(s.status)),
+      title: `${s.name} — ${TH[s.status]}`,
+      zIndexOffset: (3 - RANK[s.status]) * 1000, // worst stations drawn on top
+    }).bindPopup(`<b>${esc(s.name)}</b><br>${TH[s.status]} · ${m(s.level)} ม.<br>${esc(margin(s))}`).addTo(layer);
+  }
+  for (const p of pumps) {
+    if (!p.lat || !p.lon || (filter !== 'ทั้งหมด' && !p.district.includes(filter))) continue;
+    // Blue = at least one pump running, grey = idle or no recent data.
+    const color = !p.stale && p.pumpsRunning > 0 ? css('accent') : css('offline');
+    pts.push([p.lat, p.lon]);
+    L.marker([p.lat, p.lon], { icon: pin('pump', color), title: `${p.name} — สูบ ${p.pumpsRunning}/${p.pumpsTotal}` })
+      .bindPopup(`<b>${esc(p.name)}</b><br>ระดับน้ำ ${m(p.level)} ม.<br>เครื่องสูบทำงาน ${p.pumpsRunning}/${p.pumpsTotal}`).addTo(layer);
+  }
+  if (pts.length && fittedFor !== filter) {
+    fittedFor = filter;
+    map.fitBounds(pts, { paddingTopLeft: [16, 36], paddingBottomRight: [16, 8], maxZoom: 14 });
+  }
+
+  document.getElementById('alerts').innerHTML = recentAlerts.length
+    ? recentAlerts.slice(0, 12).map((a) => `<div class="alert"><time>${time(a.at)}</time><b>${esc(a.title)}</b>\n${esc(a.body)}</div>`).join('')
+    : '<div class="empty">ยังไม่มีการแจ้งเตือน</div>';
+
+  document.getElementById('pumps').innerHTML = pumps
+    .filter((p) => filter === 'ทั้งหมด' || p.district.includes(filter))
+    .sort((a, b) => (b.level ?? -9) - (a.level ?? -9))
+    .map((p) => `<div class="pump"><span>${esc(p.name)}</span><span class="lvl">${m(p.level)} ม.</span>
+      <small>${esc(p.district)} · เครื่องสูบทำงาน ${p.pumpsRunning}/${p.pumpsTotal}${p.gates.length ? ` · ประตูเปิด ${p.gates.map(gm).join(', ')} ม.` : ''}${p.stale ? ' · ⚠ ข้อมูลเก่า' : ''}</small></div>`)
+    .join('') || '<div class="empty">ไม่มีข้อมูล</div>';
+}
+
+async function load() {
+  try {
+    const r = await fetch('status.json', { cache: 'no-store' });
+    data = await r.json();
+    history = null; // re-read on next graph open
+    if (!data.canals) { document.getElementById('sub').textContent = 'ยังไม่มีข้อมูล — รอรอบดึงข้อมูลแรก'; return; }
+    render();
+  } catch (e) {
+    document.getElementById('sub').textContent = `โหลดข้อมูลไม่สำเร็จ: ${e.message}`;
+  }
+}
+
+document.querySelectorAll('svg[data-glyph]').forEach((el) => { el.innerHTML = GLYPH[el.dataset.glyph]; });
+map = L.map('map').setView([13.73, 100.65], 12);
+// Plain scrolling should scroll the page, not zoom the map. Ctrl/⌘ + wheel (and trackpad
+// pinch, which the browser reports as ctrl+wheel) zooms. The capture listener runs before
+// Leaflet's own wheel handler on the same element, so it can swallow the plain-scroll case.
+{
+  const el = map.getContainer();
+  const hint = Object.assign(document.createElement('div'), { className: 'zoom-hint' });
+  hint.textContent = `กด ${/Mac|iPhone|iPad/.test(navigator.platform) ? '⌘' : 'Ctrl'} ค้างแล้วเลื่อนเพื่อซูมแผนที่`;
+  el.append(hint);
+  let timer;
+  el.addEventListener('wheel', (e) => {
+    if (e.ctrlKey || e.metaKey) return;
+    e.stopImmediatePropagation();
+    hint.classList.add('show');
+    clearTimeout(timer);
+    timer = setTimeout(() => hint.classList.remove('show'), 1000);
+  }, { capture: true });
+}
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18, attribution: '© OpenStreetMap' }).addTo(map);
+layer = L.layerGroup().addTo(map);
+
+document.getElementById('filters').addEventListener('click', (e) => {
+  const d = e.target.closest('button')?.dataset.d;
+  if (d) { filter = d; render(); }
+});
+document.getElementById('list').addEventListener('toggle', (e) => {
+  const el = e.target;
+  if (!el.open) return;
+  const s = data.canals.find((c) => c.id === el.dataset.id);
+  const box = el.querySelector('.sparkbox');
+  if (s && box && !box.dataset.done) { box.dataset.done = 1; spark(box, s); }
+}, true);
+
+load();
+setInterval(load, 60_000);
+</script>
+</body>
+</html>
