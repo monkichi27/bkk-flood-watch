@@ -4,3 +4,4 @@ data/
 .playwright-mcp/
 site/
 .claude/settings.local.json
+.claude.local.md
