@@ -1,8 +1,8 @@
 name: poll water levels
 
+# No `schedule:` — GitHub's cron is best-effort and skipped every run on this repo.
+# The runner machine triggers this every 5 minutes instead (scripts/trigger-poll.sh via launchd).
 on:
-  schedule:
-    - cron: '*/5 * * * *' # GitHub may delay scheduled runs by several minutes under load
   workflow_dispatch:
 
 # Runs must not overlap: each one reads the state the previous run wrote.

@@ -101,7 +101,18 @@ test/                เทสต์ด้วยข้อมูลจริง�
 
 ## การ deploy (GitHub Actions + Pages)
 
-`.github/workflows/poll.yml` รันทุก 5 นาที ดึงข้อมูล เก็บ state ไว้ที่ branch `data` แล้ว deploy หน้าเว็บขึ้น GitHub Pages
+`.github/workflows/poll.yml` ดึงข้อมูล เก็บ state ไว้ที่ branch `data` แล้ว deploy หน้าเว็บขึ้น GitHub Pages
+workflow นี้ไม่ได้ใช้ `schedule:` ของ GitHub เพราะรันไม่สม่ำเสมอ (ตอนทดสอบไม่รันเลยแม้แต่ครั้งเดียวใน 1.5 ชม.)
+แต่ให้เครื่อง runner สั่งรันเองทุก 5 นาทีด้วย launchd:
+
+```bash
+sed "s|SCRIPT_PATH|$PWD/scripts/trigger-poll.sh|" scripts/th.bkk-flood-watch.trigger.plist \
+  > ~/Library/LaunchAgents/th.bkk-flood-watch.trigger.plist
+launchctl load ~/Library/LaunchAgents/th.bkk-flood-watch.trigger.plist
+# เลิกใช้: launchctl unload ~/Library/LaunchAgents/th.bkk-flood-watch.trigger.plist
+```
+
+
 ต้องรันบน **self-hosted runner ที่อยู่ในไทย** (label `bkk`) เพราะเว็บ กทม. ไม่ตอบ IP ต่างประเทศ
 และเครื่องนั้นต้องมี `gtar` (macOS: `brew install gnu-tar`)
 
