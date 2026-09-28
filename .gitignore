@@ -3,3 +3,4 @@ data/
 .env
 .playwright-mcp/
 site/
+.claude/settings.local.json
