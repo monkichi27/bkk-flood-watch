@@ -12,7 +12,7 @@ const env = process.env;
 const list = (v, d) => (v ? v.split(',').map((s) => s.trim()).filter(Boolean) : d);
 
 export const config = {
-  districts: list(env.DISTRICTS, ['ประเวศ', 'สวนหลวง', 'บางกะปิ']),
+  districts: list(env.DISTRICTS, ['ประเวศ', 'สวนหลวง', 'บางกะปิ', 'ลาดพร้าว']),
   pollMinutes: Number(env.POLL_MINUTES || 5),
   port: Number(env.PORT || 3000),
   // Rapid-rise alert: rise of at least this many metres within the window.
