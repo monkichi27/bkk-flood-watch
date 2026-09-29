@@ -6,6 +6,10 @@ const LIST_TTL_MS = 3600_000;
 // index.aspx leaves out a varying set of cameras on each load (579, 545, 548 within an
 // hour on 29 Sep 2026) whose snapshots still work, so keep every camera seen this week.
 const KEEP_UNSEEN_MS = 7 * 24 * 3600_000;
+// Cameras that can stay off the list for hours at a time; used whenever the list lacks them.
+const PINNED = [
+  { id: '1333', name: 'ถ.ศรีนครินทร์ ตัด ถ.กรุงเทพกรีทา (แยกกรุงเทพกรีฑา)', view: null, lat: 13.75243, lon: 100.6452 },
+];
 
 // ['id','name','name_en','view','view_en',lat,lon,'ip','pin.png']
 const ROW = /\['(\d+)','([^']*)','[^']*','([^']*)','[^']*',(-?[\d.]+),(-?[\d.]+),'[^']*','[^']*'\]/g;
@@ -88,7 +92,8 @@ export async function updateCctv(prev, stations, { now = Date.now(), radiusKm, s
       console.warn(`[cctv] camera list: ${e.message}`);
     }
   }
-  const cams = camerasNear(list, stations, radiusKm);
+  const listed = new Set(list.map((c) => c.id));
+  const cams = camerasNear([...list, ...PINNED.filter((c) => !listed.has(c.id))], stations, radiusKm);
   const nextAt = {};
   await Promise.all(
     cams.map(async (c) => {

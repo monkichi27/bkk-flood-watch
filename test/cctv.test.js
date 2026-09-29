@@ -144,3 +144,18 @@ test('a camera missing from later lists stays for a week', async (t) => {
   r = await run(r.state, NOW + 7 * 24 * 60 * MIN + 2 * MIN);
   assert.deepEqual(ids(r), ['1647']);
 });
+
+test('a pinned camera is used even when the list leaves it out', async (t) => {
+  // แยกกรุงเทพกรีฑา (1333) was missing from every list after the morning of 29 Sep.
+  const site = fakeTraffic(t, { 1333: jpeg('กรีฑา') });
+  const station = [{ name: 'ค.ทดสอบ', district: 'ประเวศ', lat: 13.761, lon: 100.6452 }]; // ~0.95 km north of 1333
+  const run = (prev) => updateCctv(prev, station, { now: NOW, radiusKm: 1.5, save: async () => {} });
+
+  site.page = PAGE.replace(/^\['1333'.*$/m, '');
+  const r1 = await run(null);
+  assert.deepEqual(r1.cameras.map((c) => [c.id, c.near, c.imageAt]), [['1333', 'ค.ทดสอบ', NOW]]);
+
+  site.page = PAGE; // listed again: still only once
+  const r2 = await run(null);
+  assert.deepEqual(r2.cameras.map((c) => c.id), ['1333']);
+});
