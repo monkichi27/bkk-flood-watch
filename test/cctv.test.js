@@ -8,7 +8,7 @@ const PAGE = readFileSync(new URL('./fixtures/bmatraffic-index.html', import.met
 const NOW = Date.parse('2026-09-29T07:00:00Z');
 const MIN = 60_000;
 
-const jpeg = (tag) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(tag)]);
+const jpeg = (tag) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.from(tag), Buffer.from([0xff, 0xd9])]);
 // What show.aspx sends when the session has no camera: a blank white 400×266 PNG.
 const BLANK_PNG = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 0x0d]);
 
@@ -39,7 +39,10 @@ function fakeTraffic(t, frames) {
     }
     if (page === 'show.aspx') {
       const cam = sessions.get(sid)?.cam;
-      return new Response(site.frames[cam] ?? BLANK_PNG, { headers: { 'content-type': 'image/jpeg' } });
+      // The real page writes the frame, then renders its own (empty) HTML form after it.
+      const trailer = `\r\n<!DOCTYPE html><form action="./show.aspx?image=${cam}&amp;time=${u.searchParams.get('time')}"></form>`;
+      const body = Buffer.concat([site.frames[cam] ?? BLANK_PNG, Buffer.from(trailer)]);
+      return new Response(body, { headers: { 'content-type': 'image/jpeg' } });
     }
     return new Response('not found', { status: 404 });
   });
@@ -98,7 +101,7 @@ const HUAMAK = [{ name: 'ค.หัวหมาก ถ.ศรีนคริน�
 test('a failed camera keeps its last image, and the camera list is refreshed hourly', async (t) => {
   const site = fakeTraffic(t, { 1647: jpeg('a'), 1336: jpeg('b') });
   const saved = [];
-  const save = async (id, img) => saved.push([id, img.toString('latin1').slice(4)]);
+  const save = async (id, img) => saved.push([id, img.toString('latin1').slice(4, -2)]);
   const run = (prev, now) => updateCctv(prev, HUAMAK, { now, radiusKm: 1.5, save });
   const listFetches = () => site.calls.filter((c) => c.page === 'index.aspx' && c.method === 'GET').length;
 
@@ -108,11 +111,12 @@ test('a failed camera keeps its last image, and the camera list is refreshed hou
   assert.deepEqual(saved.sort(), [['1336', 'b'], ['1647', 'a']]);
 
   delete site.frames[1336];
+  site.frames[1647] = jpeg('a2');
   saved.length = 0;
   const r2 = await run(r1.state, NOW + 5 * MIN);
   assert.equal(listFetches(), 1); // list still fresh
   assert.deepEqual(r2.cameras.map((c) => [c.id, c.imageAt]), [['1647', NOW + 5 * MIN], ['1336', NOW]]);
-  assert.deepEqual(saved, [['1647', 'a']]);
+  assert.deepEqual(saved, [['1647', 'a2']]);
 
   // Site down at the list refresh: keep the old list and images, and retry next poll.
   site.down = true;
@@ -133,6 +137,7 @@ test('a camera missing from later lists stays for a week', async (t) => {
 
   const r1 = await run(null, NOW);
   site.page = PAGE.replace(/^\['1336'.*$/m, '');
+  site.frames[1336] = jpeg('b2');
   const r2 = await run(r1.state, NOW + 61 * MIN);
   assert.equal(site.calls.filter((c) => c.page === 'index.aspx' && c.method === 'GET').length, 2);
   assert.deepEqual(ids(r2), ['1647', '1336']);
@@ -158,4 +163,19 @@ test('a pinned camera is used even when the list leaves it out', async (t) => {
   site.page = PAGE; // listed again: still only once
   const r2 = await run(null);
   assert.deepEqual(r2.cameras.map((c) => c.id), ['1333']);
+});
+
+test('a frozen camera keeps the time its frame was first seen', async (t) => {
+  // Camera 1333 sent the same frame all afternoon on 29 Sep; only the HTML after it changed.
+  const site = fakeTraffic(t, { 1647: jpeg('a'), 1336: jpeg('b') });
+  const run = (prev, now) => updateCctv(prev, HUAMAK, { now, radiusKm: 1.5, save: async () => {} });
+  const at = (r) => r.cameras.map((c) => [c.id, c.imageAt]);
+
+  const r1 = await run(null, NOW);
+  site.frames[1336] = jpeg('b2');
+  const r2 = await run(r1.state, NOW + 5 * MIN);
+  assert.deepEqual(at(r2), [['1647', NOW], ['1336', NOW + 5 * MIN]]);
+  site.frames[1647] = jpeg('a2');
+  const r3 = await run(r2.state, NOW + 10 * MIN);
+  assert.deepEqual(at(r3), [['1647', NOW + 10 * MIN], ['1336', NOW + 5 * MIN]]);
 });

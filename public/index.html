@@ -240,7 +240,7 @@ async function spark(el, s) {
 function camPopup(c) {
   const age = c.imageAt ? (Date.now() - c.imageAt) / 60_000 : null;
   const when = c.imageAt
-    ? `ภาพเมื่อ ${time(c.imageAt)}${age > CAM_STALE_MINUTES ? ' <span class="old">· ภาพเก่า ดึงภาพใหม่ไม่ได้</span>' : ''}`
+    ? `ภาพเมื่อ ${time(c.imageAt)}${age > CAM_STALE_MINUTES ? ' <span class="old">· ภาพเก่า ยังไม่ได้ภาพใหม่จากกล้องนี้</span>' : ''}`
     : 'ยังดึงภาพจากกล้องนี้ไม่ได้';
   return `<div class="cam"><b>${esc(c.name)}</b>${c.view ? `<small>${esc(c.view)}</small>` : ''}
     ${c.imageAt ? `<img src="cctv/${esc(c.id)}.jpg?t=${c.imageAt}" alt="ภาพจากกล้อง ${esc(c.name)} ${time(c.imageAt)}">` : ''}

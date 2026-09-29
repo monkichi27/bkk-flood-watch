@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 // Data source: ระบบกล้อง CCTV จราจร กรุงเทพมหานคร (cpudapp.bangkok.go.th/bmatraffic, same
 // system as www.bmatraffic.com). The camera list is a JS array embedded in index.aspx.
 const BASE = 'https://cpudapp.bangkok.go.th/bmatraffic';
@@ -67,18 +69,21 @@ export async function fetchSnapshot(id) {
   await player.arrayBuffer();
   const res = await request(`show.aspx?image=${id}&time=${Date.now()}`, { headers: { cookie } });
   if (!res.ok) throw new Error(`show.aspx → HTTP ${res.status}`);
-  const img = Buffer.from(await res.arrayBuffer());
+  const body = Buffer.from(await res.arrayBuffer());
   // A dead camera or a session problem yields a blank PNG (labelled image/jpeg) instead.
-  if (img[0] !== 0xff || img[1] !== 0xd8) throw new Error('no image (blank frame)');
-  return img;
+  // A real frame is followed by the page's own HTML form; keep only the JPEG.
+  const end = body.lastIndexOf(Buffer.from([0xff, 0xd9]));
+  if (body[0] !== 0xff || body[1] !== 0xd8 || end < 0) throw new Error('no image (blank frame)');
+  return body.subarray(0, end + 2);
 }
 
 /**
  * Refresh the camera list at most hourly and snapshot the cameras near our stations.
  * A camera that fails keeps its previous image and time; `save(id, jpeg)` stores new ones.
+ * `imageAt` is when a frame was first seen: a frozen camera keeps sending the same one.
  */
 export async function updateCctv(prev, stations, { now = Date.now(), radiusKm, save }) {
-  let { list = [], listAt = 0, imageAt = {} } = prev ?? {};
+  let { list = [], listAt = 0, imageAt = {}, frame = {} } = prev ?? {};
   if (now - listAt >= LIST_TTL_MS) {
     try {
       const fresh = await fetchCameraList();
@@ -94,20 +99,23 @@ export async function updateCctv(prev, stations, { now = Date.now(), radiusKm, s
   }
   const listed = new Set(list.map((c) => c.id));
   const cams = camerasNear([...list, ...PINNED.filter((c) => !listed.has(c.id))], stations, radiusKm);
-  const nextAt = {};
+  const nextAt = {}, nextFrame = {};
   await Promise.all(
     cams.map(async (c) => {
       nextAt[c.id] = imageAt[c.id] ?? null;
+      nextFrame[c.id] = frame[c.id] ?? null;
       try {
-        await save(c.id, await fetchSnapshot(c.id));
-        nextAt[c.id] = now;
+        const img = await fetchSnapshot(c.id);
+        const hash = createHash('sha1').update(img).digest('hex');
+        await save(c.id, img);
+        if (hash !== nextFrame[c.id]) [nextAt[c.id], nextFrame[c.id]] = [now, hash];
       } catch (e) {
         console.warn(`[cctv] camera ${c.id}: ${e.message}`);
       }
     }),
   );
   return {
-    state: { list, listAt, imageAt: nextAt },
+    state: { list, listAt, imageAt: nextAt, frame: nextFrame },
     cameras: cams.map(({ seenAt, ...c }) => ({ ...c, imageAt: nextAt[c.id] })),
   };
 }
