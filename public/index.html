@@ -19,14 +19,14 @@
     --bg: #f4f6f7; --panel: #ffffff; --ink: #14202b; --muted: #55636f; --line: #dde3e7;
     --normal: #1c7f5e; --warning: #a35c00; --critical: #c0283a; --offline: #6b7479;
     --normal-bg: #e3f4ec; --warning-bg: #fdf0dc; --critical-bg: #fbe5e8; --offline-bg: #eceff1;
-    --accent: #0b5cad;
+    --accent: #0b5cad; --cam: #5b3fa8;
   }
   @media (prefers-color-scheme: dark) {
     :root {
       --bg: #0f1519; --panel: #172026; --ink: #e7edf1; --muted: #9aa8b2; --line: #2a363e;
       --normal: #4fd1a1; --warning: #f5b454; --critical: #ff7b8a; --offline: #9aa3a8;
       --normal-bg: #16332a; --warning-bg: #3a2b14; --critical-bg: #3e1a20; --offline-bg: #242d33;
-      --accent: #6cb4ff;
+      --accent: #6cb4ff; --cam: #b69cff;
     }
   }
   * { box-sizing: border-box; }
@@ -91,6 +91,11 @@
   .pump small { color: var(--muted); grid-column: 1 / -1; }
   .pin { width: 24px; height: 32px; filter: drop-shadow(0 1px 1.5px rgb(0 0 0 / .4)); }
   .pin svg { display: block; width: 100%; height: 100%; }
+  .pin.sm { width: 20px; height: 27px; }
+  .cam { width: min(348px, 70vw); font-size: .85rem; }
+  .cam img { display: block; width: 100%; height: auto; aspect-ratio: 4 / 3; margin: 6px 0; border-radius: 4px; background: var(--offline-bg); }
+  .cam small { display: block; color: var(--muted); }
+  .cam .old { color: var(--warning); font-weight: 600; }
   .legend .kind { width: 18px; height: 18px; color: var(--muted); }
   .legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: .8rem; color: var(--muted); margin-top: 6px; }
   .legend span { display: inline-flex; align-items: center; gap: 5px; }
@@ -118,6 +123,7 @@
       <span><svg class="kind" viewBox="0 0 24 24" aria-hidden="true" data-glyph="canal"></svg>จุดวัดน้ำในคลอง</span>
       <span><svg class="kind" viewBox="0 0 24 24" aria-hidden="true" data-glyph="gate"></svg>ประตูระบายน้ำ</span>
       <span><svg class="kind" viewBox="0 0 24 24" aria-hidden="true" data-glyph="pump"></svg>สถานีสูบน้ำ (ฟ้า = กำลังสูบ)</span>
+      <span><svg class="kind" viewBox="0 0 24 24" aria-hidden="true" data-glyph="camera" style="color:var(--cam)"></svg>กล้อง CCTV จราจร (คลิกดูภาพ)</span>
     </div>
     <div class="filters" id="filters" role="group" aria-label="กรองตามเขต"></div>
     <div class="panel"><ul class="list" id="list"></ul></div>
@@ -137,6 +143,7 @@
   ระดับน้ำหน่วย ม.รทก. (เมตร เทียบระดับทะเลปานกลาง) ·
   สีของแต่ละจุดดูจาก<b>ระยะผิวน้ำถึงตลิ่งฝั่งที่ต่ำกว่า</b> ตามความสูงตลิ่งที่ กทม. บันทึกไว้ ซึ่งบางจุดอาจคลาดเคลื่อน ·
   สถานะ "เตือนภัย/วิกฤต" ของ กทม. แสดงไว้เป็นข้อมูลประกอบ เกณฑ์นี้มักต่ำกว่าตลิ่งมาก จึงไม่ได้แปลว่าน้ำใกล้ล้น ·
+  ภาพกล้อง: <a href="https://cpudapp.bangkok.go.th/bmatraffic/" rel="noopener">ระบบกล้อง CCTV จราจร กทม.</a> เก็บภาพล่าสุดไว้ทุก 5 นาที ·
   เว็บนี้ทำขึ้นเองโดยอาสา ไม่ใช่เว็บทางการของ กทม. ใช้ประกอบการตัดสินใจเท่านั้น ติดตามประกาศทางการที่ <a href="https://x.com/BKK_BEST" rel="noopener">@BKK_BEST</a> / โทร 1555
 </footer>
 
@@ -148,6 +155,7 @@ const RANK = { danger: 0, watch: 1, ok: 2, unknown: 3, offline: 4 };
 const CLS = { danger: 'critical', watch: 'warning', ok: 'normal', unknown: 'offline', offline: 'offline' };
 const BMA_TH = { critical: 'วิกฤต', warning: 'เตือนภัย', normal: 'ปกติ', offline: 'ขัดข้อง' };
 const STALE_MINUTES = 15;
+const CAM_STALE_MINUTES = 30;
 const css = (v) => getComputedStyle(document.documentElement).getPropertyValue(`--${v}`).trim();
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
 const m = (v) => (v === null || v === undefined ? '–' : `${v >= 0 ? '+' : ''}${v.toFixed(2)}`);
@@ -162,13 +170,16 @@ const GLYPH = {
   gate: '<path d="M5 21V3M19 21V3M5 7h14M9 7v7M15 7v7M5 14h14M3 21h18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>',
   // Three-blade impeller.
   pump: '<g fill="currentColor"><ellipse cx="12" cy="6.2" rx="3" ry="4.6"/><ellipse cx="12" cy="6.2" rx="3" ry="4.6" transform="rotate(120 12 12)"/><ellipse cx="12" cy="6.2" rx="3" ry="4.6" transform="rotate(240 12 12)"/><circle cx="12" cy="12" r="2.6"/></g>',
+  camera: '<g fill="none" stroke="currentColor" stroke-width="2" stroke-linejoin="round"><path d="M3 8h3.5l2-3h7l2 3H21v11H3z"/><circle cx="12" cy="13" r="3.5"/></g>',
 };
 
-function pin(kind, color) {
+function pin(kind, color, small = false) {
   return L.divIcon({
     className: '',
-    iconSize: [24, 32], iconAnchor: [12, 31], popupAnchor: [0, -28],
-    html: `<div class="pin"><svg viewBox="0 0 30 40" aria-hidden="true">
+    ...(small
+      ? { iconSize: [20, 27], iconAnchor: [10, 26], popupAnchor: [0, -23] }
+      : { iconSize: [24, 32], iconAnchor: [12, 31], popupAnchor: [0, -28] }),
+    html: `<div class="pin${small ? ' sm' : ''}"><svg viewBox="0 0 30 40" aria-hidden="true">
       <path d="M15 39S2.5 24.8 2.5 14.5a12.5 12.5 0 0 1 25 0C27.5 24.8 15 39 15 39z" fill="${color}" stroke="#fff" stroke-width="2"/>
       <g transform="translate(6.5 6) scale(.71)" color="#fff">${GLYPH[kind]}</g></svg></div>`,
   });
@@ -225,8 +236,20 @@ async function spark(el, s) {
     <span>${time(t0)} → ${time(t1)} (${pts.length} จุด)</span>`;
 }
 
+// The image loads only when the popup opens (Leaflet adds popup content to the page then).
+function camPopup(c) {
+  const age = c.imageAt ? (Date.now() - c.imageAt) / 60_000 : null;
+  const when = c.imageAt
+    ? `ภาพเมื่อ ${time(c.imageAt)}${age > CAM_STALE_MINUTES ? ' <span class="old">· ภาพเก่า ดึงภาพใหม่ไม่ได้</span>' : ''}`
+    : 'ยังดึงภาพจากกล้องนี้ไม่ได้';
+  return `<div class="cam"><b>${esc(c.name)}</b>${c.view ? `<small>${esc(c.view)}</small>` : ''}
+    ${c.imageAt ? `<img src="cctv/${esc(c.id)}.jpg?t=${c.imageAt}" alt="ภาพจากกล้อง ${esc(c.name)} ${time(c.imageAt)}">` : ''}
+    <small>${when}</small>
+    <small>ใกล้ ${esc(c.near)} (${c.km.toFixed(1)} กม.) · <a href="https://cpudapp.bangkok.go.th/bmatraffic/" target="_blank" rel="noopener">เว็บกล้อง กทม.</a></small></div>`;
+}
+
 function render() {
-  const { canals, pumps, districts, recentAlerts, fetchedAt, pollMinutes } = data;
+  const { canals, pumps, cameras = [], districts, recentAlerts, fetchedAt, pollMinutes } = data;
   document.getElementById('sub').textContent =
     `เขต${districts.join(' · ')} — อัปเดตล่าสุด ${time(fetchedAt)} (ดึงข้อมูลทุก ${pollMinutes} นาที)`;
 
@@ -285,6 +308,13 @@ function render() {
     L.marker([p.lat, p.lon], { icon: pin('pump', color), title: `${p.name} — สูบ ${p.pumpsRunning}/${p.pumpsTotal}` })
       .bindPopup(`<b>${esc(p.name)}</b><br>ระดับน้ำ ${m(p.level)} ม.<br>เครื่องสูบทำงาน ${p.pumpsRunning}/${p.pumpsTotal}`).addTo(layer);
   }
+  // Camera pins are small and few, so they go on top where they stay clickable; they don't
+  // count toward the map's fitted bounds.
+  for (const c of cameras) {
+    if (filter !== 'ทั้งหมด' && !c.district.includes(filter)) continue;
+    L.marker([c.lat, c.lon], { icon: pin('camera', css('cam'), true), title: `กล้อง ${c.name}`, zIndexOffset: 5000 })
+      .bindPopup(camPopup(c), { maxWidth: 360 }).addTo(layer);
+  }
   if (pts.length && fittedFor !== filter) {
     fittedFor = filter;
     map.fitBounds(pts, { paddingTopLeft: [16, 36], paddingBottomRight: [16, 8], maxZoom: 14 });
@@ -306,7 +336,11 @@ function render() {
 async function load() {
   try {
     const r = await fetch('status.json', { cache: 'no-store' });
-    data = await r.json();
+    const next = await r.json();
+    // Re-rendering rebuilds the markers and closes any open popup (e.g. a camera image
+    // someone is looking at), so only do it when the poller has written new data.
+    if (data && next.fetchedAt === data.fetchedAt) { staleCheck(); return; }
+    data = next;
     history = null; // re-read on next graph open
     if (!data.canals) { document.getElementById('sub').textContent = 'ยังไม่มีข้อมูล — รอรอบดึงข้อมูลแรก'; return; }
     render();

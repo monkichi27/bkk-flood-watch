@@ -29,17 +29,19 @@ jobs:
         with:
           node-version: 24
 
+      # state.json plus cctv/*.jpg, so a camera that fails this run keeps its last image.
       - name: Restore state from data branch
         run: |
           mkdir -p data
           if git fetch --depth=1 origin data 2>/dev/null; then
-            git show FETCH_HEAD:state.json > data/state.json
+            git archive FETCH_HEAD | tar -x -f - -C data
           fi
 
       - name: Poll BMA and send alerts
         run: node src/index.js --once --out site
         env:
           DISTRICTS: ${{ vars.DISTRICTS }}
+          CCTV_RADIUS_KM: ${{ vars.CCTV_RADIUS_KM }}
           NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
@@ -52,7 +54,7 @@ jobs:
         run: |
           cd data
           git init -q -b data
-          git add state.json
+          git add -A
           git -c user.name=flood-watch-bot -c user.email=actions@users.noreply.github.com \
             commit -q -m "state $(date -u +%FT%TZ)"
           git push -qf "https://x-access-token:${{ github.token }}@github.com/${{ github.repository }}.git" data

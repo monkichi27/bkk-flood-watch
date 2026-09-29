@@ -25,6 +25,8 @@ export const config = {
   staleMinutes: Number(env.STALE_MINUTES || 60),
   alertCooldownMinutes: Number(env.ALERT_COOLDOWN_MINUTES || 120),
   historyHours: Number(env.HISTORY_HOURS || 48),
+  // Snapshot BMA traffic cameras within this distance of a station; 0 turns cameras off.
+  cctvRadiusKm: Number(env.CCTV_RADIUS_KM || 1.5),
   dataDir: env.DATA_DIR || 'data',
   notify: {
     ntfyTopic: env.NTFY_TOPIC,
